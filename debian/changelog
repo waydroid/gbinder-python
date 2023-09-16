@@ -1,3 +1,10 @@
+gbinder-python (1.1.2) bullseye; urgency=medium
+
+  * Explicit noexcept
+  * Fix returning a transaction error
+
+ -- Alessandro Astone <ales.astone@gmail.com>  Wed, 16 Sep 2023 18:07:00 +0000
+
 gbinder-python (1.1.1) bullseye; urgency=medium
 
   * Initial versioned changelog
