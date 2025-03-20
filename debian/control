@@ -5,6 +5,7 @@ Priority: optional
 Build-Depends: debhelper (>= 9),
                dh-python,
                python3-all-dev (>= 3.2),
+               python3-setuptools,
                cython3,
                libgbinder-dev (>= 1.1.20),
                libglibutil-dev,
