@@ -68,7 +68,7 @@ cdef class RemoteObject:
 cdef void remote_object_local_notify_func(cgbinder.GBinderRemoteObject* obj, void* user_data) noexcept with gil:
     (<object>user_data).notify_func_callback()
 
-from libc.stdint cimport int64_t, uint64_t
+from libc.stdint cimport int64_t, uint64_t, uint8_t
 
 cdef class RemoteReply:
     cdef cgbinder.GBinderRemoteReply* _reply
@@ -708,13 +708,19 @@ cdef class Buffer:
         if self._buffer is not NULL:
             cgbinder.gbinder_buffer_free(self._buffer)
 
-    def get_buffer_tuple(self):
+    @property
+    def data(self):
         if self._buffer is not NULL:
-            return <object>self._buffer.data, self._buffer.size
+            return <uint8_t[:self._buffer.size]>self._buffer.data
 
 cdef class Writer:
     cdef cgbinder.GBinderWriter _writer
     cdef public object destroy_notif
+    # Keep references to data passed to C functions where needed
+    cdef list _referenced_objects
+
+    def __init__(self):
+        self._referenced_objects = []
 
     def append_int32(self, unsigned int value):
         cgbinder.gbinder_writer_append_int32(&self._writer, value)
@@ -744,7 +750,7 @@ cdef class Writer:
         cgbinder.gbinder_writer_append_bool(&self._writer, value)
 
     def append_bytes(self, value, unsigned long size):
-        cgbinder.gbinder_writer_append_bytes(&self._writer, <const void*>value, size)
+        cgbinder.gbinder_writer_append_bytes(&self._writer, <const uint8_t*>value, size)
 
     def append_fd(self, int fd):
         cgbinder.gbinder_writer_append_fd(&self._writer, fd)
@@ -755,27 +761,62 @@ cdef class Writer:
     def overwrite_int32(self, unsigned long offset, signed int value):
         cgbinder.gbinder_writer_overwrite_int32(&self._writer, offset, value)
 
-    def append_buffer_object_with_parent(self, buf, unsigned long len, parent_tuple):
+    def append_buffer_object_with_parent(self, buf, parent_tuple):
         cdef cgbinder.GBinderParent* parent = NULL
         parent.index = parent_tuple[0]
         parent.offset = parent_tuple[1]
-        return cgbinder.gbinder_writer_append_buffer_object_with_parent(&self._writer, <const void*>buf, len, parent)
 
-    def gbinder_writer_append_buffer_object(self, buf, unsigned long len):
-        return cgbinder.gbinder_writer_append_buffer_object(&self._writer, <const void*>buf, len)
+        # Store a reference to the bytes object to keep it alive
+        self._referenced_objects.append(buf)
+        cdef const void* ptr = <const void*>(<uint8_t*>buf)
 
-    def append_hidl_vec(self, base, unsigned int count, unsigned int elemsize):
-        cgbinder.gbinder_writer_append_hidl_vec(&self._writer, <const void*>base, count, elemsize)
+        return cgbinder.gbinder_writer_append_buffer_object_with_parent(&self._writer, ptr, len(buf), parent)
+
+    def append_buffer_object(self, buf):
+        # Store a reference to the bytes object to keep it alive
+        self._referenced_objects.append(buf)
+        cdef const void* ptr = <const void*>(<const uint8_t*>buf)
+        return cgbinder.gbinder_writer_append_buffer_object(&self._writer, ptr, len(buf))
+
+    def append_hidl_vec(self, base, unsigned int count=0, unsigned int elemsize=0):
+        cdef const void* ptr = NULL
+
+        # Handle null or empty vector
+        if base is None or len(base) == 0:
+            # Pass NULL pointer with count=0 for empty vectors
+            ptr = NULL
+            count = 0
+        # Accept bytes-like object
+        else:
+            if count == 0 or elemsize == 0:
+                raise ValueError("Count and element size must be provided")
+            ptr = <const void*>(<const uint8_t*>base)
+
+        # libgbinder copies the data in gbinder_writer_data_append_hidl_vec,
+        # no need to keep the reference, but the caller has to ensure any
+        # nested object pointers remain valid
+
+        cgbinder.gbinder_writer_append_hidl_vec(&self._writer, ptr, count, elemsize)
 
     def append_hidl_string(self, value):
-        cgbinder.gbinder_writer_append_hidl_string(&self._writer, ensure_binary(value))
+        # Convert to bytes if needed and keep a reference
+        binary = ensure_binary(value)
+        self._referenced_objects.append(binary)
+        cgbinder.gbinder_writer_append_hidl_string(&self._writer, binary)
 
     def append_hidl_string_vec(self, values_list):
         cdef signed long count = len(values_list)
         cdef const char** strv = <const char**>malloc(count * sizeof(const char*))
+
+        # Keep references to all the binary strings
+        binary_strings = []
         for i in range(count):
-            value = ensure_binary(values_list[i])
-            strv[i] = value
+            binary = ensure_binary(values_list[i])
+            binary_strings.append(binary)
+            strv[i] = binary
+
+        # Keep a reference to the list of binary strings
+        self._referenced_objects.append(binary_strings)
 
         cgbinder.gbinder_writer_append_hidl_string_vec(&self._writer, strv, count)
 
@@ -786,19 +827,22 @@ cdef class Writer:
         cgbinder.gbinder_writer_append_remote_object(&self._writer, obj._object)
 
     def append_byte_array(self, byte_array, signed int len):
+        # Keep a reference to the byte array
+        self._referenced_objects.append(byte_array)
         cgbinder.gbinder_writer_append_byte_array(&self._writer, <const void*>byte_array, len)
 
     def malloc(self, byte_array, unsigned long size):
         cdef void* alloc_buf = cgbinder.gbinder_writer_malloc(&self._writer, size)
-        return <object>alloc_buf
+        return <uint8_t[:size]>alloc_buf
 
     def malloc0(self, byte_array, unsigned long size):
         cdef void* alloc_buf = cgbinder.gbinder_writer_malloc0(&self._writer, size)
-        return <object>alloc_buf
+        return <uint8_t[:size]>alloc_buf
 
     def memdup(self, buf, unsigned long size):
+        cdef const void* ptr = <const void*>(<const uint8_t*>buf);
         cdef void* dup_buf = cgbinder.gbinder_writer_memdup(&self._writer, <const void*>buf, size)
-        return <object>dup_buf
+        return <uint8_t[:size]>dup_buf
 
     def add_cleanup(self, destroy_notif):
         self.destroy_notif = destroy_notif
@@ -888,18 +932,24 @@ cdef class Reader:
         return buff
 
     def read_hidl_struct1(self, unsigned long size):
-        cdef const void* value = cgbinder.gbinder_reader_read_hidl_struct1(&self._reader, size)
-        return <object>value
+        cdef const void* ptr = cgbinder.gbinder_reader_read_hidl_struct1(&self._reader, size)
+        if ptr == NULL:
+            return None
+        return <const uint8_t[:size]>ptr
 
     def read_hidl_vec(self):
         cdef size_t count, elemsize
-        cdef const void* value = cgbinder.gbinder_reader_read_hidl_vec(&self._reader, &count, &elemsize)
-        return <object>value, count, elemsize
+        cdef const void* ptr = cgbinder.gbinder_reader_read_hidl_vec(&self._reader, &count, &elemsize)
+        if ptr == NULL:
+            return None
+        return <const uint8_t[:count, :elemsize]>ptr
 
     def read_hidl_vec1(self, unsigned int expected_elemsize):
         cdef size_t count
-        cdef const void* value = cgbinder.gbinder_reader_read_hidl_vec1(&self._reader, &count, expected_elemsize)
-        return <object>value, count
+        cdef const void* ptr = cgbinder.gbinder_reader_read_hidl_vec1(&self._reader, &count, expected_elemsize)
+        if ptr == NULL:
+            return None
+        return <const uint8_t[:count, :expected_elemsize]>ptr
 
     def read_hidl_string(self):
         return cgbinder.gbinder_reader_read_hidl_string_c(&self._reader).decode()
@@ -934,8 +984,10 @@ cdef class Reader:
 
     def read_byte_array(self):
         cdef size_t len
-        cdef const void* value = cgbinder.gbinder_reader_read_byte_array(&self._reader, &len)
-        return <object>value, len
+        cdef const void* ptr = cgbinder.gbinder_reader_read_byte_array(&self._reader, &len)
+        if ptr == NULL:
+            return None
+        return <const uint8_t[:len]>ptr
 
     def bytes_read(self):
         return cgbinder.gbinder_reader_bytes_read(&self._reader)
