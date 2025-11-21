@@ -196,10 +196,12 @@ cdef class Client:
         return cgbinder.gbinder_client_transact(self._client, code, flags, req._req, client_reply_func, local_destroy_notif, <void*>self)
 
     def reply_func_callback(self, reply, status):
-        self.reply_func(reply, status)
+        if self.reply_func:
+            self.reply_func(reply, status)
 
     def destroy_notif_callback(self):
-        self.destroy_notif()
+        if self.destroy_notif:
+            self.destroy_notif()
 
     def cancel(self, unsigned long id):
         return cgbinder.gbinder_client_cancel(self._client, id)
