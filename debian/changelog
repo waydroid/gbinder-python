@@ -1,3 +1,20 @@
+gbinder-python (1.3.0) bullseye; urgency=medium
+
+  [ Jami Kettunen ]
+  * Correct types to match libgbinder headers to fix 32-bit compiles
+
+  [ TheKit ]
+  * gbinder: fix methods that accept or return memory buffers
+
+  [ Alessandro Astone ]
+  * gbinder: Allow empty callback functions
+  * setup: Always build with cython
+
+  [ Herrie ]
+  * setup.py: Migrate away from deprecated distutils.core to setuptools
+
+ -- Alessandro Astone <ales.astone@gmail.com>  Fri, 21 Nov 2025 23:00:06 +0100
+
 gbinder-python (1.1.2) bullseye; urgency=medium
 
   * Explicit noexcept
