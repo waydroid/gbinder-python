@@ -1,5 +1,6 @@
 import sys, subprocess
 from setuptools import setup, Extension
+from Cython.Build import cythonize
 
 
 def pkgconfig(package, kw):
@@ -10,23 +11,13 @@ def pkgconfig(package, kw):
         kw.setdefault(flag_map.get(token[:2]), []).append(token[2:])
     return kw
 
-USE_CYTHON = False
-if "--cython" in sys.argv:
-    sys.argv.remove("--cython")
-    USE_CYTHON = True
-
-file_ext = ".pyx" if USE_CYTHON else ".c"
-
-extension_kwargs = { 'sources': ["gbinder" + file_ext] }
+extension_kwargs = { 'sources': ["gbinder.pyx"] }
 extension_kwargs = pkgconfig('libgbinder', extension_kwargs)
 if None in extension_kwargs:
     del extension_kwargs[None]
 extensions = [Extension('gbinder', **extension_kwargs)]
-
-if USE_CYTHON:
-    from Cython.Build import cythonize
-    extensions = cythonize(extensions, compiler_directives={
-                           'language_level': "3"})
+extensions = cythonize(extensions, compiler_directives={
+                       'language_level': "3"})
 
 setup(
     name="gbinder-python",
