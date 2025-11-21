@@ -22,7 +22,7 @@ extensions = cythonize(extensions, compiler_directives={
 setup(
     name="gbinder-python",
     description="""Cython extension module for C++ gbinder functions""",
-    version="1.1.2",
+    version="1.3.0",
     author="Erfan Abdi",
     author_email="erfangplus@gmail.com",
     url="https://github.com/erfanoabdi/gbinder-python",
