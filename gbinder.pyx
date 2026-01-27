@@ -8,6 +8,12 @@ def ensure_binary(s):
         return s.encode()
     raise TypeError("not expecting type '%s'" % type(s))
 
+# Stability levels for local objects (since libgbinder 1.1.40)
+STABILITY_UNDECLARED = 0x00
+STABILITY_VENDOR = 0x03
+STABILITY_SYSTEM = 0x0c
+STABILITY_VINTF = 0x3f
+
 cdef class Bridge:
     cdef cgbinder.GBinderBridge* _bridge
 
@@ -517,6 +523,10 @@ cdef class LocalObject:
             c_reply = cgbinder.gbinder_local_object_new_reply(self._object)
             reply.set_c_reply(c_reply)
             return reply
+
+    def set_stability(self, stability):
+        if self._object is not NULL:
+            cgbinder.gbinder_local_object_set_stability(self._object, <cgbinder.GBINDER_STABILITY_LEVEL>stability)
 
 cdef cgbinder.GBinderLocalReply* local_transact_callback(cgbinder.GBinderLocalObject* obj, cgbinder.GBinderRemoteRequest* c_req, unsigned int code, unsigned int flags, int* status, void* user_data) noexcept with gil:
     req = RemoteRequest()

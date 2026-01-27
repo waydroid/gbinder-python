@@ -38,6 +38,12 @@ cdef extern from "gbinder/gbinder_types.h":
     ctypedef struct GBinderWriter:
         pass
 
+    ctypedef enum GBINDER_STABILITY_LEVEL:
+        GBINDER_STABILITY_UNDECLARED = 0
+        GBINDER_STABILITY_VENDOR = 0x03
+        GBINDER_STABILITY_SYSTEM = 0x0c
+        GBINDER_STABILITY_VINTF = 0x3f
+
     ctypedef GBinderLocalReply* (*GBinderLocalTransactFunc)(GBinderLocalObject* obj, GBinderRemoteRequest* req, unsigned int code, unsigned int flags, int* status, void* user_data)
 
 from libc.stdint cimport int64_t, uint64_t
@@ -119,6 +125,7 @@ cdef extern from "gbinder/gbinder_local_object.h":
 
     void gbinder_local_object_drop(GBinderLocalObject* obj)
     GBinderLocalReply* gbinder_local_object_new_reply(GBinderLocalObject* obj)
+    void gbinder_local_object_set_stability(GBinderLocalObject* obj, GBINDER_STABILITY_LEVEL stability)
 
 cdef extern from "gbinder/gbinder_local_reply.h":
     GBinderLocalReply* gbinder_local_reply_ref(GBinderLocalReply* reply)
